@@ -10,6 +10,10 @@ CATALOG_ID = 1
 PAGES_ID = 2
 FONT_ID = 3
 DEFAULT_LINES_PER_PAGE = 45
+FONT_SIZE = 12
+LEFT_MARGIN = 72
+TOP_MARGIN = 770
+LINE_SPACING = -16
 
 
 def _normalize_line(text: str) -> str:
@@ -57,11 +61,11 @@ def build_pdf(lines: Iterable[str]) -> bytes:
         content_id = next_id + 1
         next_id += 2
 
-        commands = ["BT", "/F1 12 Tf", "72 770 Td"]
+        commands = ["BT", f"/F1 {FONT_SIZE} Tf", f"{LEFT_MARGIN} {TOP_MARGIN} Td"]
         for index, line in enumerate(page_lines):
             escaped = _escape_pdf_text(line)
             if index > 0:
-                commands.append("0 -16 Td")
+                commands.append(f"0 {LINE_SPACING} Td")
             commands.append(f"({escaped}) Tj")
         commands.append("ET")
         stream = "\n".join(commands).encode("latin-1")
