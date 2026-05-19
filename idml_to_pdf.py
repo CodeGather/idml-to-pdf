@@ -6,6 +6,11 @@ import zipfile
 from typing import Iterable
 from xml.etree import ElementTree
 
+CATALOG_ID = 1
+PAGES_ID = 2
+FONT_ID = 3
+DEFAULT_LINES_PER_PAGE = 45
+
 
 def _normalize_line(text: str) -> str:
     return " ".join(text.split())
@@ -33,14 +38,17 @@ def _escape_pdf_text(text: str) -> str:
     return sanitized.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
-def _page_chunks(lines: Iterable[str], lines_per_page: int = 45) -> list[list[str]]:
+def _page_chunks(lines: Iterable[str], lines_per_page: int = DEFAULT_LINES_PER_PAGE) -> list[list[str]]:
     source = list(lines) or [""]
     return [source[index : index + lines_per_page] for index in range(0, len(source), lines_per_page)]
 
 
 def build_pdf(lines: Iterable[str]) -> bytes:
     pages = _page_chunks(lines)
-    object_map: dict[int, str] = {1: "<< /Type /Catalog /Pages 2 0 R >>", 3: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
+    object_map: dict[int, str] = {
+        CATALOG_ID: f"<< /Type /Catalog /Pages {PAGES_ID} 0 R >>",
+        FONT_ID: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    }
     page_refs: list[str] = []
 
     next_id = 4
@@ -60,12 +68,12 @@ def build_pdf(lines: Iterable[str]) -> bytes:
 
         object_map[content_id] = f"<< /Length {len(stream)} >>\nstream\n{stream.decode('latin-1')}\nendstream"
         object_map[page_id] = (
-            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_id} 0 R >>"
+            f"<< /Type /Page /Parent {PAGES_ID} 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 {FONT_ID} 0 R >> >> /Contents {content_id} 0 R >>"
         )
         page_refs.append(f"{page_id} 0 R")
 
-    object_map[2] = f"<< /Type /Pages /Count {len(page_refs)} /Kids [{' '.join(page_refs)}] >>"
+    object_map[PAGES_ID] = f"<< /Type /Pages /Count {len(page_refs)} /Kids [{' '.join(page_refs)}] >>"
 
     object_ids = sorted(object_map)
     chunks = [b"%PDF-1.4\n"]
@@ -81,7 +89,9 @@ def build_pdf(lines: Iterable[str]) -> bytes:
     for object_id in range(1, max_id + 1):
         xref.append(f"{offsets[object_id]:010d} 00000 n \n")
     chunks.append("".join(xref).encode("latin-1"))
-    chunks.append(f"trailer\n<< /Size {max_id + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("latin-1"))
+    chunks.append(
+        f"trailer\n<< /Size {max_id + 1} /Root {CATALOG_ID} 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("latin-1")
+    )
     return b"".join(chunks)
 
 
