@@ -302,7 +302,7 @@ func convertPDFToPng(src, dst string) error {
 			pdfSrc = tmpPDF
 		}
 	}
-	const rasterDPI = 600
+	const rasterDPI = 144
 	if err := exec.Command("mutool", "convert", "-O", "resolution="+strconv.Itoa(rasterDPI), "-o", dst, pdfSrc, "1").Run(); err == nil {
 		generated := strings.TrimSuffix(dst, filepath.Ext(dst)) + "1.png"
 		if _, err := os.Stat(generated); err == nil {
