@@ -93,7 +93,11 @@ func (m TransformMatrix) ExtractScale() (sx, sy float64) {
 }
 
 func (m TransformMatrix) ExtractRotation() float64 {
-	return math.Atan2(m.M12, m.M11)
+	// IDML 使用行向量格式: [m11 m21; m12 m22]
+	// Apply: x' = m11*x + m21*y, y' = m12*x + m22*y
+	// 旋转矩阵: [cos θ  sin θ; -sin θ  cos θ]
+	// m11 = cos θ, m21 = sin θ → atan2(m21, m11) = θ
+	return math.Atan2(m.M21, m.M11)
 }
 
 // ParseAnchor 解析 PathPointType 的 Anchor 字符串 "x y"。
@@ -254,20 +258,32 @@ func ComputeItemBoundsSimple(it PageItem) (x, y, w, h float64, err error) {
 }
 
 // ComputeImageGlobalBounds 计算带有 Image/PDF 子元素的 PageItem 的全局边界。
-// 使用父级全局边界作为绘制区域（子级变换的缩放/位移已在框架内完成，
-// 不应再次应用到全局坐标），但旋转角度合并父级和子级。
-func ComputeImageGlobalBounds(it PageItem) (gx1, gy1, gx2, gy2 float64, angle float64, err error) {
+// 返回：
+//   - gx1, gy1, gx2, gy2: 父级全局边界（AABB）
+//   - imgGx1, imgGy1: 图片/底图的全局左上角位置（未经过旋转拉伸）
+//   - angle: 合并后的旋转角度
+func ComputeImageGlobalBounds(it PageItem) (gx1, gy1, gx2, gy2, imgGx1, imgGy1, angle float64, err error) {
 	// 边界始终使用父级变换计算的标准全局边界（避免 PNG 转换后
 	// 再套用 child 变换导致位置/尺寸错误）。
 	gx1, gy1, gx2, gy2, err = ComputeItemGlobalBounds(it)
 	if err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, 0, 0, err
 	}
 
 	// 解析父级变换
 	pm, err := ParseItemTransform(it.ItemTransform)
 	if err != nil {
 		pm = Translate(0, 0)
+	}
+
+	// 原图局部边界 → 全局位置（用于旋转时正确绘制，避免拉伸）
+	lx1, ly1, _, _, hasLocal := GetItemLocalBounds(it)
+	if hasLocal {
+		// 原图全局左上角 = 局部左上角 经过父级变换
+		imgGx1 = pm.M11*lx1 + pm.M21*ly1 + pm.Tx
+		imgGy1 = pm.M12*lx1 + pm.M22*ly1 + pm.Ty
+	} else {
+		imgGx1, imgGy1 = gx1, gy1
 	}
 
 	var combined TransformMatrix
@@ -278,10 +294,10 @@ func ComputeImageGlobalBounds(it PageItem) (gx1, gy1, gx2, gy2 float64, angle fl
 		cm, _ := ParseItemTransform(it.Image.ItemTransform)
 		combined = pm.Mul(cm)
 	} else {
-		return gx1, gy1, gx2, gy2, pm.ExtractRotation(), nil
+		return gx1, gy1, gx2, gy2, imgGx1, imgGy1, pm.ExtractRotation(), nil
 	}
 
-	return gx1, gy1, gx2, gy2, combined.ExtractRotation(), nil
+	return gx1, gy1, gx2, gy2, imgGx1, imgGy1, combined.ExtractRotation(), nil
 }
 
 // TransformPathGeometry 将 PageItem 的 PathGeometry 点应用 ItemTransform，

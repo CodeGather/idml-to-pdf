@@ -105,6 +105,7 @@ type Page struct {
 	ItemTransform       string `xml:"ItemTransform,attr"`
 	MasterPageTransform string `xml:"MasterPageTransform,attr"`
 	AppliedMaster       string `xml:"AppliedMaster,attr"`
+	LayoutRule          string `xml:"LayoutRule,attr"`
 }
 
 // PageItem 统一表示页面上各种元素。
@@ -173,9 +174,11 @@ type GraphicBounds struct {
 
 // Image 表示嵌套的图片引用。
 type Image struct {
-	Self          string `xml:"Self,attr"`
-	ItemTransform string `xml:"ItemTransform,attr"`
-	Link          *Link  `xml:"Link"`
+	Self          string         `xml:"Self,attr"`
+	ItemTransform string         `xml:"ItemTransform,attr"`
+	Link          *Link          `xml:"Link"`
+	GraphicBounds *GraphicBounds `xml:"Properties>GraphicBounds"`
+	Contents      string         `xml:"Properties>Contents"`
 }
 
 // PDF 表示嵌套的 PDF/AI 文件引用。

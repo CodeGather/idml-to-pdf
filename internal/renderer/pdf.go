@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/h2non/bimg"
 	"github.com/signintech/gopdf"
 )
 
@@ -131,6 +132,8 @@ func (r *PDFRenderer) setFont(fontName string, size float64) {
 }
 
 // DrawImage 在指定位置绘制图片（支持 .png/.jpg/.ai/.pdf 自动转换）。
+// x, y, w, h 是 AABB（外接矩形）的位置和尺寸。
+// 用于无旋转或小幅旋转的普通图片。
 func (r *PDFRenderer) DrawImage(imageData []byte, x, y, w, h, angle float64) error {
 	if len(imageData) == 0 {
 		return fmt.Errorf("empty image data")
@@ -157,15 +160,14 @@ func (r *PDFRenderer) DrawImage(imageData []byte, x, y, w, h, angle float64) err
 		defer os.Remove(pngFile)
 		drawFile = pngFile
 
-		// 确保最终 PNG 为白色背景，避免透明像素在某些阅读器中显示为黑色
+		// 确保最终 PNG 为白色背景
 		opaqueFile := tmpFile + ".opaque.png"
 		if err := ensureOpaqueWhiteBackground(drawFile, opaqueFile); err == nil {
 			defer os.Remove(opaqueFile)
 			drawFile = opaqueFile
 		}
 
-		// 裁剪白色背景，然后把实际内容拉伸到原始帧尺寸
-		// 保持 (x, y, w, h) 不变，仅裁剪 PNG 让 gopdf 拉伸填满帧
+		// 裁剪白色背景，拉伸到原始帧尺寸
 		_, _, cropErr := cropWhiteBackground(drawFile, drawFile+".cropped.png")
 		if cropErr == nil {
 			defer os.Remove(drawFile + ".cropped.png")
@@ -173,14 +175,151 @@ func (r *PDFRenderer) DrawImage(imageData []byte, x, y, w, h, angle float64) err
 		}
 	}
 
-	if angle != 0 {
-		r.pdf.Rotate(angle, x+w/2, y+h/2)
-	}
+	// 直接绘制（无旋转或小幅旋转）
 	_ = r.pdf.Image(drawFile, x, y, &gopdf.Rect{W: w, H: h})
-	if angle != 0 {
-		r.pdf.RotateReset()
-	}
 	return nil
+}
+
+// DrawRotatedImage 在 AABB 中心绘制旋转后的图片（用于 90°/270° 旋转的底图）。
+// cx, cy 是 AABB 中心坐标（旋转中心）。
+// w, h 是局部（旋转前）尺寸，angle 是旋转角度。
+func (r *PDFRenderer) DrawRotatedImage(imageData []byte, cx, cy, w, h, angle float64) error {
+	if len(imageData) == 0 {
+		return fmt.Errorf("empty image data")
+	}
+	tmpDir := os.TempDir()
+	ext := ".png"
+	if len(imageData) > 2 && imageData[0] == 0xFF && imageData[1] == 0xD8 {
+		ext = ".jpg"
+	} else if len(imageData) > 4 && string(imageData[:4]) == "%PDF" {
+		ext = ".pdf"
+	}
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("idmlimg_%d%s", len(imageData), ext))
+	if err := os.WriteFile(tmpFile, imageData, 0644); err != nil {
+		return fmt.Errorf("write temp image: %w", err)
+	}
+	defer os.Remove(tmpFile)
+
+	drawFile := tmpFile
+	if ext == ".pdf" {
+		pngFile := tmpFile + ".png"
+		if err := convertPDFToPng(tmpFile, pngFile); err != nil {
+			return fmt.Errorf("convert pdf/ai to png: %w", err)
+		}
+		defer os.Remove(pngFile)
+		drawFile = pngFile
+
+		opaqueFile := tmpFile + ".opaque.png"
+		if err := ensureOpaqueWhiteBackground(drawFile, opaqueFile); err == nil {
+			defer os.Remove(opaqueFile)
+			drawFile = opaqueFile
+		}
+
+		_, _, cropErr := cropWhiteBackground(drawFile, drawFile+".cropped.png")
+		if cropErr == nil {
+			defer os.Remove(drawFile + ".cropped.png")
+			drawFile = drawFile + ".cropped.png"
+		}
+	}
+
+	// 围绕 AABB 中心旋转，使用局部宽高绘制
+	ox := cx - w/2
+	oy := cy - h/2
+	r.pdf.Rotate(angle, cx, cy)
+	_ = r.pdf.Image(drawFile, ox, oy, &gopdf.Rect{W: w, H: h})
+	r.pdf.RotateReset()
+	return nil
+}
+
+// CropImageToVisibleRegion 将图片裁剪到 Rectangle PathGeometry 可见的区域。
+// 使用 libvips (bimg) 处理，原生保留 CMYK 色彩空间，零色差。
+func CropImageToVisibleRegion(imgData []byte, pathLx1, pathLy1, pathLx2, pathLy2 float64, imgTx, imgTy, imgSx, imgSy float64, gbRight, gbBottom float64) []byte {
+	if imgSx == 0 || imgSy == 0 || gbRight == 0 || gbBottom == 0 {
+		return imgData
+	}
+
+	// 计算可见区域在源图 GraphicBounds 坐标中的范围
+	srcX1 := (pathLx1 - imgTx) / imgSx
+	srcY1 := (pathLy1 - imgTy) / imgSy
+	srcX2 := (pathLx2 - imgTx) / imgSx
+	srcY2 := (pathLy2 - imgTy) / imgSy
+
+	if srcX1 > srcX2 {
+		srcX1, srcX2 = srcX2, srcX1
+	}
+	if srcY1 > srcY2 {
+		srcY1, srcY2 = srcY2, srcY1
+	}
+
+	if srcX2-srcX1 >= gbRight*0.95 && srcY2-srcY1 >= gbBottom*0.95 {
+		return imgData
+	}
+
+	if srcX1 < 0 {
+		srcX1 = 0
+	}
+	if srcY1 < 0 {
+		srcY1 = 0
+	}
+	if srcX2 > gbRight {
+		srcX2 = gbRight
+	}
+	if srcY2 > gbBottom {
+		srcY2 = gbBottom
+	}
+	if srcX1 >= srcX2 || srcY1 >= srcY2 {
+		return imgData
+	}
+
+	// 用 bimg 获取实际像素尺寸
+	meta, err := bimg.NewImage(imgData).Metadata()
+	if err != nil || meta.Size.Width == 0 || meta.Size.Height == 0 {
+		return imgData
+	}
+	pixW := meta.Size.Width
+	pixH := meta.Size.Height
+
+	// 转换为像素坐标
+	pixelX1 := int(srcX1 * float64(pixW) / gbRight)
+	pixelY1 := int(srcY1 * float64(pixH) / gbBottom)
+	pixelX2 := int(srcX2 * float64(pixW) / gbRight)
+	pixelY2 := int(srcY2 * float64(pixH) / gbBottom)
+
+	if pixelX1 < 0 {
+		pixelX1 = 0
+	}
+	if pixelY1 < 0 {
+		pixelY1 = 0
+	}
+	if pixelX2 > pixW {
+		pixelX2 = pixW
+	}
+	if pixelY2 > pixH {
+		pixelY2 = pixH
+	}
+	if pixelX1 >= pixelX2 || pixelY1 >= pixelY2 {
+		return imgData
+	}
+
+	// 用 bimg 裁剪，保留原始色彩空间 (Interpretation 设为原图空间)
+	cropW := pixelX2 - pixelX1
+	cropH := pixelY2 - pixelY1
+	opts := bimg.Options{
+		AreaWidth:  cropW,
+		AreaHeight: cropH,
+		Top:        pixelY1,
+		Left:       pixelX1,
+		Quality:    90,
+	}
+	// 如果是 CMYK 空间，设置 interpretation 保留色彩
+	if meta.Space == "cmyk" || meta.Space == "CMYK" {
+		opts.Interpretation = bimg.InterpretationCMYK
+	}
+	cropped, err := bimg.NewImage(imgData).Process(opts)
+	if err != nil {
+		return imgData
+	}
+	return cropped
 }
 
 // convertPDFToPng 将 PDF/AI 转为 PNG，按平台尝试多个外部工具。
@@ -418,10 +557,14 @@ func (r *PDFRenderer) DrawVerticalText(x, y, w, h float64, text string, fontName
 	// 在 frame 内垂直居中
 	totalTextH := float64(len(runes)) * fontSize
 	startY := y + (h-totalTextH)/2
-	// 竖排文字左对齐
+	// 在 frame 内水平居中（竖排文字每字占一个固定宽度）
+	charX := x + (w-fontSize)/2
+	if charX < x {
+		charX = x
+	}
 	for i := range runes {
 		charY := startY + float64(i)*fontSize
-		r.pdf.SetXY(x, charY)
+		r.pdf.SetXY(charX, charY)
 		_ = r.pdf.Text(string(runes[i]))
 	}
 }

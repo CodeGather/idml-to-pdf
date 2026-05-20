@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"log"
 	"math"
 	"os"
@@ -17,6 +21,7 @@ import (
 	"idml-to-pdf/internal/assets"
 	"idml-to-pdf/internal/parser"
 	"idml-to-pdf/internal/renderer"
+
 )
 
 func main() {
@@ -76,13 +81,11 @@ func main() {
 
 		// 计算 Page 在 Spread 中的偏移
 		var pageOffsetX, pageOffsetY float64
-		var masterYOffset float64
 		if len(sp.Pages()) > 0 {
 			px, py, _, _, err := parser.GetPageBounds(sp.Pages()[0])
 			if err == nil {
 				pageOffsetX, pageOffsetY = px, py
 			}
-			masterYOffset = parser.GetMasterPageYOffset(sp.Pages()[0])
 		}
 
 		items := parser.FlattenPageItems(sp)
@@ -126,46 +129,117 @@ func main() {
 		}
 		if uri != "" {
 			// 合并父级和子级变换，重新计算图片的全局边界和旋转角度
-			igx1, igy1, igx2, _, imgAngle, err := parser.ComputeImageGlobalBounds(it)
-			if err != nil {
-				log.Printf("计算图片边界失败 %s: %v", it.Self, err)
-				// 回退到标准边界
-				igx1, igy1, igx2 = gx1, gy1, gx2
-				parentM, _ := parser.ParseItemTransform(it.ItemTransform)
-				imgAngle = parentM.ExtractRotation()
-			}
+			igx1, igy1, igx2, igy2, _, _, imgAngle, err := parser.ComputeImageGlobalBounds(it)
+		if err != nil {
+			log.Printf("计算图片边界失败 %s: %v", it.Self, err)
+			// 回退到标准边界
+			igx1, igy1, igx2 = gx1, gy1, gx2
+			parentM, _ := parser.ParseItemTransform(it.ItemTransform)
+			imgAngle = parentM.ExtractRotation()
+		}
 			ix := igx1 - pageOffsetX
 			iy := igy1 - pageOffsetY
 			iw := igx2 - igx1
-			ih := gy2 - igy1
+			ih := igy2 - igy1
 			imgAngleDeg := imgAngle * 180 / math.Pi
+			// 检测是否为 90°/270° 旋转（底图）
+			angNorm := math.Mod(imgAngleDeg, 360)
+			if angNorm < 0 {
+				angNorm += 360
+			}
+			isRotated90 := (angNorm > 85 && angNorm < 95) || (angNorm > 265 && angNorm < 275)
 
-				res := loader.Resolve(uri, doc.EmbeddedGraphics)
-				if res.Err != nil {
-					log.Printf("素材缺失: %s", filepath.Base(uri))
-					rend.DrawPlaceholder(ix, iy, iw, ih, filepath.Base(uri))
-				} else {
-					if err := rend.DrawImage(res.Data, ix, iy, iw, ih, imgAngleDeg); err != nil {
+			res := loader.Resolve(uri, doc.EmbeddedGraphics)
+			if res.Err != nil {
+				log.Printf("素材缺失: %s", filepath.Base(uri))
+				rend.DrawPlaceholder(ix, iy, iw, ih, filepath.Base(uri))
+			} else {
+				if isRotated90 {
+					// 底图：获取局部宽高，围绕 AABB 中心旋转
+					lx1, ly1, lx2, ly2, hasLocal := parser.GetItemLocalBounds(it)
+					localW, localH := iw, ih
+					if hasLocal {
+						localW = lx2 - lx1
+						localH = ly2 - ly1
+					}
+
+					// AABB 中心
+					cx := ix + iw/2
+					cy := iy + ih/2
+
+					if err := rend.DrawRotatedImage(res.Data, cx, cy, localW, localH, imgAngleDeg); err != nil {
 						log.Printf("绘制图片失败 %s: %v", uri, err)
 						rend.DrawPlaceholder(ix, iy, iw, ih, filepath.Base(uri))
 					}
-				}
-				// 绘制父级框架的描边/填充（如图片边框），避免有 Image 子元素时跳过
-				if it.FillColor != "" || (it.StrokeColor != "" && it.StrokeColor != "Color/None" && it.StrokeColor != "Swatch/None") {
-					sw := 0.0
-					if it.StrokeWeight != "" {
-						sw, _ = strconv.ParseFloat(it.StrokeWeight, 64)
+} else {
+				// 其他图片：直接使用 AABB 位置和尺寸
+				imgData := res.Data
+				// 如果图片有子变换（Rectangle 中的 Image/PDF 嵌套），
+				// 需要裁剪到 Rectangle PathGeometry 可见的区域
+				lx1, ly1, lx2, ly2, hasLocal := parser.GetItemLocalBounds(it)
+				if hasLocal && it.Image != nil && it.Image.ItemTransform != "" && it.Image.GraphicBounds != nil {
+					cm, err := parser.ParseItemTransform(it.Image.ItemTransform)
+					if err == nil && cm.M11 != 0 && cm.M22 != 0 {
+						gbR, _ := strconv.ParseFloat(it.Image.GraphicBounds.Right, 64)
+						gbB, _ := strconv.ParseFloat(it.Image.GraphicBounds.Bottom, 64)
+						if gbR > 0 && gbB > 0 {
+							imgData = renderer.CropImageToVisibleRegion(imgData,
+								lx1, ly1, lx2, ly2,
+								cm.Tx, cm.Ty, cm.M11, cm.M22,
+								gbR, gbB)
+						}
 					}
-					lx1, ly1, lx2, ly2, hasLocal := parser.GetItemLocalBounds(it)
-					origW, origH := w, h
-					if hasLocal {
-						origW = lx2 - lx1
-						origH = ly2 - ly1
-					}
-					rend.DrawRotatedRect(x, y, w, h, origW, origH, it.FillColor, it.StrokeColor, sw, angleDeg)
 				}
-				continue
+				if hasLocal && it.PDF != nil && it.PDF.ItemTransform != "" && it.PDF.GraphicBounds != nil {
+					cm, err := parser.ParseItemTransform(it.PDF.ItemTransform)
+					if err == nil && cm.M11 != 0 && cm.M22 != 0 {
+						gbR, _ := strconv.ParseFloat(it.PDF.GraphicBounds.Right, 64)
+						gbB, _ := strconv.ParseFloat(it.PDF.GraphicBounds.Bottom, 64)
+						if gbR > 0 && gbB > 0 {
+							imgData = renderer.CropImageToVisibleRegion(imgData,
+								lx1, ly1, lx2, ly2,
+								cm.Tx, cm.Ty, cm.M11, cm.M22,
+								gbR, gbB)
+						}
+					}
+				}
+				if err := rend.DrawImage(imgData, ix, iy, iw, ih, imgAngleDeg); err != nil {
+					log.Printf("绘制图片失败 %s: %v", uri, err)
+					rend.DrawPlaceholder(ix, iy, iw, ih, filepath.Base(uri))
+				}
 			}
+			}
+			// 绘制父级框架的描边/填充（如图片边框），避免有 Image 子元素时跳过
+			if it.FillColor != "" || (it.StrokeColor != "" && it.StrokeColor != "Color/None" && it.StrokeColor != "Swatch/None") {
+				sw := 0.0
+				if it.StrokeWeight != "" {
+					sw, _ = strconv.ParseFloat(it.StrokeWeight, 64)
+				}
+				lx1, ly1, lx2, ly2, hasLocal := parser.GetItemLocalBounds(it)
+				origW, origH := w, h
+				if hasLocal {
+					origW = lx2 - lx1
+					origH = ly2 - ly1
+				}
+				rend.DrawRotatedRect(x, y, w, h, origW, origH, it.FillColor, it.StrokeColor, sw, angleDeg)
+			}
+			continue
+		}
+
+		// 内嵌图片（Contents = Base64 编码的内联图片数据，如 TIFF JPEG）
+		if it.Image != nil && it.Image.Contents != "" {
+			imgData, err := base64.StdEncoding.DecodeString(it.Image.Contents)
+			if err == nil && len(imgData) > 0 {
+				jpegData, err := extractJPEGFromTIFF(imgData)
+				if err == nil {
+					rend.DrawImage(jpegData, x, y, w, h, angleDeg)
+				} else {
+					rend.DrawPlaceholder(x, y, w, h, "embedded")
+				}
+			} else {
+				rend.DrawPlaceholder(x, y, w, h, "embedded")
+			}
+		}
 
 			// 处理 EPS 文本对象：按其原始字号和边界还原，不走正文 Story 流。
 			if it.Properties.EPSTextData != "" {
@@ -215,12 +289,7 @@ func main() {
 					if text != "" {
 						if story.Vertical() {
 							// 竖排文字：逐字从上到下排列，在 frame 内居中
-							// MasterPageTransform 的 Y 偏移需要叠加到竖排文字上
-							vertY := y - masterYOffset
-							if vertY < 0 {
-								vertY = y
-							}
-							rend.DrawVerticalText(x, vertY, w, h, text, fontName, fontSize, textColor)
+							rend.DrawVerticalText(x, y, w, h, text, fontName, fontSize, textColor)
 						} else {
 							rend.DrawTextFrame(x, y, w, h, text, fontName, fontSize, angleDeg, hAlign, textColor)
 						}
@@ -447,4 +516,253 @@ func simplePlaceholderGenerator(name string, w, h float64) ([]byte, error) {
 		0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
 		0x42, 0x60, 0x82,
 	}, nil
+}
+
+// extractJPEGFromTIFF 从内嵌的 TIFF 数据中提取 JPEG 图像条纹。
+// 适用于 macOS 截图 TIFF（Compression=7 JPEG-in-TIFF）。
+func extractJPEGFromTIFF(data []byte) ([]byte, error) {
+	if len(data) < 8 {
+		return nil, fmt.Errorf("TIFF 数据太短")
+	}
+
+	// 判断字节序
+	var bo string // '>' big-endian, '<' little-endian
+	if data[0] == 'M' && data[1] == 'M' && data[2] == 0 && data[3] == 0x2A {
+		bo = ">"
+	} else if data[0] == 'I' && data[1] == 'I' && data[2] == 0x2A && data[3] == 0 {
+		bo = "<"
+	} else {
+		return nil, fmt.Errorf("不是有效的 TIFF 格式 (magic=%x %x %x %x)", data[0], data[1], data[2], data[3])
+	}
+
+	// 读取 IFD 偏移（字节 4-7）
+	ifdOff := int(binaryU(bo, data[4:8]))
+	if ifdOff <= 0 || ifdOff >= len(data)-2 {
+		return nil, fmt.Errorf("IFD 偏移 %d 超出文件范围 (%d bytes)", ifdOff, len(data))
+	}
+
+	// 解析 IFD
+	count := int(binaryU(bo, data[ifdOff:ifdOff+2]))
+	if count < 1 || count > 200 {
+		return nil, fmt.Errorf("IFD 条目数异常: %d", count)
+	}
+
+	var imgW, imgH, compression, stripOff, stripCount int
+	stripOffOff, stripCntOff := -1, -1
+	stripOffCnt, stripCntCnt := 0, 0
+
+	for i := 0; i < count; i++ {
+		ep := ifdOff + 2 + i*12
+		if ep+12 > len(data) {
+			break
+		}
+		tag := int(binaryU(bo, data[ep:ep+2]))
+		typ := int(binaryU(bo, data[ep+2:ep+4]))
+		n := int(binaryU(bo, data[ep+4:ep+8]))
+
+		// 计算实际数据大小
+		typeSizes := map[int]int{1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 8, 10: 8, 11: 4, 12: 8, 13: 4, 16: 8}
+		dataSize := typeSizes[typ] * n
+
+		// 根据类型读取值：值 <= 4 字节时直接读，否则值是指针
+		var val int
+		if dataSize <= 4 {
+			val = int(binaryU(bo, data[ep+8:ep+8+dataSize]))
+		} else {
+			val = int(binaryU(bo, data[ep+8:ep+12]))
+		}
+
+		switch tag {
+		case 256: // ImageWidth
+			imgW = val
+		case 257: // ImageLength
+			imgH = val
+		case 259: // Compression
+			compression = val
+		case 273: // StripOffsets
+			if dataSize <= 4 {
+				stripOff = val
+			} else {
+				stripOffOff = val
+				stripOffCnt = n
+			}
+		case 279: // StripByteCounts
+			if dataSize <= 4 {
+				stripCount = val
+			} else {
+				stripCntOff = val
+				stripCntCnt = n
+			}
+		}
+}
+
+	if imgW > 100000 || imgH > 100000 || imgW == 0 || imgH == 0 {
+		// 在文件中搜索最大的有效 JPEG 段
+		bestJpeg := findEmbeddedJPEG(data)
+		if bestJpeg != nil {
+			return bestJpeg, nil
+		}
+		return nil, fmt.Errorf("未找到图片尺寸")
+	}
+
+	// 读取所有条纹偏移和大小
+	var stripOffsets, stripCounts []int
+	if stripOffOff > 0 && stripOffCnt > 0 {
+		for j := 0; j < stripOffCnt; j++ {
+			off := int(binaryU(bo, data[stripOffOff+j*4 : stripOffOff+j*4+4]))
+			if off > 0 && off < len(data) {
+				stripOffsets = append(stripOffsets, off)
+			}
+		}
+	} else if stripOff > 0 {
+		stripOffsets = append(stripOffsets, stripOff)
+	}
+
+	if stripCntOff > 0 && stripCntCnt > 0 {
+		for j := 0; j < stripCntCnt; j++ {
+			c := int(binaryU(bo, data[stripCntOff+j*4 : stripCntOff+j*4+4]))
+			stripCounts = append(stripCounts, c)
+		}
+	} else if stripCount > 0 {
+		stripCounts = append(stripCounts, stripCount)
+	}
+
+	if len(stripOffsets) == 0 || len(stripCounts) == 0 {
+		return nil, fmt.Errorf("无效的图像条纹: 偏移=%d 计数=%d", len(stripOffsets), len(stripCounts))
+	}
+
+	// 合并所有条纹数据
+	var allStripData []byte
+	for j := 0; j < len(stripOffsets) && j < len(stripCounts); j++ {
+		off := stripOffsets[j]
+		c := stripCounts[j]
+		end := off + c
+		if end > len(data) {
+			end = len(data)
+		}
+		if off > 0 && off < len(data) && end > off {
+			allStripData = append(allStripData, data[off:end]...)
+		}
+	}
+
+	if len(allStripData) == 0 {
+		return nil, fmt.Errorf("条纹数据为空")
+	}
+
+	// 如果是 JPEG（Compression=7）或数据本身就是 JPEG
+	if len(allStripData) > 2 && allStripData[0] == 0xFF && allStripData[1] == 0xD8 {
+		return allStripData, nil
+	}
+
+	// 未压缩原始像素数据：尝试编码为 JPEG
+	if (compression == 1 || compression == 0) && imgW > 0 && imgH > 0 && imgW*imgH < 5000000 {
+		expectedSize := imgW * imgH
+
+		// 尝试 RGBA（4 字节/像素，最常见于 TIFF）
+		if len(allStripData) >= expectedSize*4 {
+			rawData := allStripData[:expectedSize*4]
+			img := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
+			for y := 0; y < imgH; y++ {
+				for x := 0; x < imgW; x++ {
+					idx := (y*imgW + x) * 4
+					img.Set(x, y, color.RGBA{R: rawData[idx], G: rawData[idx+1], B: rawData[idx+2], A: 255})
+				}
+			}
+			var buf bytes.Buffer
+			_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
+			return buf.Bytes(), nil
+		}
+
+		// RGB（3 字节/像素）
+		if len(allStripData) >= expectedSize*3 {
+			rawData := allStripData[:expectedSize*3]
+			img := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
+			for y := 0; y < imgH; y++ {
+				for x := 0; x < imgW; x++ {
+					idx := (y*imgW + x) * 3
+					img.Set(x, y, color.RGBA{R: rawData[idx], G: rawData[idx+1], B: rawData[idx+2], A: 255})
+				}
+			}
+			var buf bytes.Buffer
+			_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
+			return buf.Bytes(), nil
+		}
+
+		// 灰阶（1 字节/像素）
+		if len(allStripData) >= expectedSize {
+			img := image.NewGray(image.Rect(0, 0, imgW, imgH))
+			for y := 0; y < imgH; y++ {
+				for x := 0; x < imgW; x++ {
+					img.SetGray(x, y, color.Gray{Y: allStripData[y*imgW+x]})
+				}
+			}
+			var buf bytes.Buffer
+			_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
+			return buf.Bytes(), nil
+		}
+	}
+
+	// 不是 JPEG 也不是已知格式，返回原始数据
+	if len(allStripData) > 0 {
+		return allStripData, nil
+	}
+
+	return nil, fmt.Errorf("空图像数据")
+}
+
+// binaryU 按指定字节序读取 n 字节为 uint32（n=1,2,4）
+func binaryU(bo string, b []byte) uint32 {
+	if len(b) == 0 {
+		return 0
+	}
+	switch bo {
+	case "<": // little-endian
+		var v uint32
+		for i := 0; i < len(b) && i < 4; i++ {
+			v |= uint32(b[i]) << (8 * i)
+		}
+		return v
+	default: // big-endian
+		var v uint32
+		for i := 0; i < len(b) && i < 4; i++ {
+			v = (v << 8) | uint32(b[i])
+		}
+		return v
+	}
+}
+
+// findEmbeddedJPEG 在 TIFF 数据中搜索最大的有效 JPEG 段。
+func findEmbeddedJPEG(data []byte) []byte {
+	bestStart, bestEnd, bestSize := -1, -1, 0
+	pos := 0
+	for pos < len(data)-1 {
+		// 查找 JPEG SOI 标记
+		if data[pos] != 0xFF || data[pos+1] != 0xD8 {
+			pos++
+			continue
+		}
+		// 查找 EOI 标记
+		end := pos + 2
+		for end < len(data)-1 {
+			if data[end] == 0xFF && data[end+1] == 0xD9 {
+				size := end + 2 - pos
+				if size > bestSize {
+					bestStart, bestEnd, bestSize = pos, end+2, size
+				}
+				break
+			}
+			end++
+		}
+		pos = end + 2
+	}
+	if bestStart >= 0 {
+		jpeg := data[bestStart:bestEnd]
+		// 验证有 SOF 标记
+		for i := 2; i < len(jpeg)-1 && i < 200; i++ {
+			if jpeg[i] == 0xFF && jpeg[i+1] >= 0xC0 && jpeg[i+1] <= 0xC3 {
+				return jpeg
+			}
+		}
+	}
+	return nil
 }
