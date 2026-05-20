@@ -418,10 +418,10 @@ func (r *PDFRenderer) DrawTextFrame(x, y, w, h float64, text string, fontName st
 	r.setFont(fontName, fontSize)
 	// 设置文本颜色（默认黑色）
 	if textColor != "" && textColor != "Color/None" && textColor != "Swatch/None" {
-		rf, gf, bf := r.parseColorRGB(textColor)
-		r.pdf.SetFillColor(uint8(rf), uint8(gf), uint8(bf))
+		c, m, y, k := r.parseColorCMYK(textColor)
+		r.pdf.SetFillColorCMYK(c, m, y, k)
 	} else {
-		r.pdf.SetFillColor(0, 0, 0)
+		r.pdf.SetFillColorCMYK(0, 0, 0, 100)
 	}
 
 	lines := strings.Split(text, "\n")
@@ -506,10 +506,10 @@ func (r *PDFRenderer) DrawTextAt(x, y float64, text string, fontName string, fon
 	}
 	r.setFont(fontName, fontSize)
 	if textColor != "" && textColor != "Color/None" && textColor != "Swatch/None" {
-		rf, gf, bf := r.parseColorRGB(textColor)
-		r.pdf.SetFillColor(uint8(rf), uint8(gf), uint8(bf))
+		c, m, y, k := r.parseColorCMYK(textColor)
+		r.pdf.SetFillColorCMYK(c, m, y, k)
 	} else {
-		r.pdf.SetFillColor(0, 0, 0)
+		r.pdf.SetFillColorCMYK(0, 0, 0, 100)
 	}
 	r.pdf.SetXY(x, y)
 	_ = r.pdf.Text(text)
@@ -524,10 +524,10 @@ func (r *PDFRenderer) DrawVerticalTextAt(x, y float64, text string, fontName str
 	}
 	r.setFont(fontName, fontSize)
 	if textColor != "" && textColor != "Color/None" && textColor != "Swatch/None" {
-		rf, gf, bf := r.parseColorRGB(textColor)
-		r.pdf.SetFillColor(uint8(rf), uint8(gf), uint8(bf))
+		c, m, y, k := r.parseColorCMYK(textColor)
+		r.pdf.SetFillColorCMYK(c, m, y, k)
 	} else {
-		r.pdf.SetFillColor(0, 0, 0)
+		r.pdf.SetFillColorCMYK(0, 0, 0, 100)
 	}
 	// 从第一个字符开始，向上（y 减小方向）绘制
 	runes := []rune(text)
@@ -548,10 +548,10 @@ func (r *PDFRenderer) DrawVerticalText(x, y, w, h float64, text string, fontName
 	}
 	r.setFont(fontName, fontSize)
 	if textColor != "" && textColor != "Color/None" && textColor != "Swatch/None" {
-		rf, gf, bf := r.parseColorRGB(textColor)
-		r.pdf.SetFillColor(uint8(rf), uint8(gf), uint8(bf))
+		c, m, y, k := r.parseColorCMYK(textColor)
+		r.pdf.SetFillColorCMYK(c, m, y, k)
 	} else {
-		r.pdf.SetFillColor(0, 0, 0)
+		r.pdf.SetFillColorCMYK(0, 0, 0, 100)
 	}
 	runes := []rune(text)
 	// 在 frame 内垂直居中
@@ -573,13 +573,13 @@ func (r *PDFRenderer) DrawVerticalText(x, y, w, h float64, text string, fontName
 func (r *PDFRenderer) DrawRect(x, y, w, h float64, fillColor, strokeColor string, strokeWidth float64) {
 	style := ""
 	if fillColor != "" && fillColor != "Color/None" && fillColor != "Swatch/None" {
-		rf, gf, bf := r.parseColorRGB(fillColor)
-		r.pdf.SetFillColor(uint8(rf), uint8(gf), uint8(bf))
+		cf, mf, yf, kf := r.parseColorCMYK(fillColor)
+		r.pdf.SetFillColorCMYK(cf, mf, yf, kf)
 		style = "F"
 	}
 	if strokeWidth > 0 && strokeColor != "" && strokeColor != "Color/None" {
-		rs, gs, bs := r.parseColorRGB(strokeColor)
-		r.pdf.SetStrokeColor(uint8(rs), uint8(gs), uint8(bs))
+		cs, ms, ys, ks := r.parseColorCMYK(strokeColor)
+		r.pdf.SetStrokeColorCMYK(cs, ms, ys, ks)
 		r.pdf.SetLineWidth(strokeWidth)
 		if style == "F" {
 			style = "FD"
@@ -603,13 +603,13 @@ func (r *PDFRenderer) DrawRotatedRect(x, y, w, h, origW, origH float64, fillColo
 
 	style := ""
 	if fillColor != "" && fillColor != "Color/None" && fillColor != "Swatch/None" {
-		rf, gf, bf := r.parseColorRGB(fillColor)
-		r.pdf.SetFillColor(uint8(rf), uint8(gf), uint8(bf))
+		cf, mf, yf, kf := r.parseColorCMYK(fillColor)
+		r.pdf.SetFillColorCMYK(cf, mf, yf, kf)
 		style = "F"
 	}
 	if strokeWidth > 0 && strokeColor != "" && strokeColor != "Color/None" {
-		rs, gs, bs := r.parseColorRGB(strokeColor)
-		r.pdf.SetStrokeColor(uint8(rs), uint8(gs), uint8(bs))
+		cs, ms, ys, ks := r.parseColorCMYK(strokeColor)
+		r.pdf.SetStrokeColorCMYK(cs, ms, ys, ks)
 		r.pdf.SetLineWidth(strokeWidth)
 		if style == "F" {
 			style = "FD"
@@ -633,13 +633,13 @@ func (r *PDFRenderer) DrawPolygon(points []float64, fillColor, strokeColor strin
 	}
 	style := ""
 	if fillColor != "" && fillColor != "Color/None" && fillColor != "Swatch/None" {
-		rf, gf, bf := r.parseColorRGB(fillColor)
-		r.pdf.SetFillColor(uint8(rf), uint8(gf), uint8(bf))
+		cf, mf, yf, kf := r.parseColorCMYK(fillColor)
+		r.pdf.SetFillColorCMYK(cf, mf, yf, kf)
 		style = "F"
 	}
 	if strokeWidth > 0 && strokeColor != "" && strokeColor != "Color/None" {
-		rs, gs, bs := r.parseColorRGB(strokeColor)
-		r.pdf.SetStrokeColor(uint8(rs), uint8(gs), uint8(bs))
+		cs, ms, ys, ks := r.parseColorCMYK(strokeColor)
+		r.pdf.SetStrokeColorCMYK(cs, ms, ys, ks)
 		r.pdf.SetLineWidth(strokeWidth)
 		if style == "F" {
 			style = "FD"
@@ -769,57 +769,36 @@ func ensureOpaqueWhiteBackground(src, dst string) error {
 	return png.Encode(out, white)
 }
 
-// parseColorRGB 解析 IDML 颜色为 RGB（0-255）。
-func (r *PDFRenderer) parseColorRGB(idmlColor string) (rr, gg, bb int) {
+// parseColorCMYK 解析 IDML 颜色为 CMYK 值（0-100），直接用于 PDF DeviceCMYK 颜色空间。
+// 无需任何 RGB 转换 — IDML 储存的 CMYK 值直接传给 PDF 的 k/K 操作符。
+func (r *PDFRenderer) parseColorCMYK(idmlColor string) (c, m, y, k uint8) {
 	switch idmlColor {
 	case "Color/Black":
-		return 0, 0, 0
-	case "Color/C=100 M=0 Y=0 K=0":
-		return 0, 140, 255
-	case "Color/C=0 M=0 Y=100 K=0":
-		return 255, 255, 0
-	case "Color/C=15 M=100 Y=100 K=0":
-		return 230, 0, 0
-	case "Color/C=75 M=5 Y=100 K=0":
-		return 80, 160, 0
-	case "Color/C=100 M=90 Y=10 K=0":
-		return 240, 15, 40
+		return 0, 0, 0, 100
+	case "Color/None", "Swatch/None":
+		return 0, 0, 0, 0
 	}
 
-	// 通用 CMYK 解析（硬编码格式）
-	var c, m, y, k float64
-	_, err := fmt.Sscanf(idmlColor, "Color/C=%f M=%f Y=%f K=%f", &c, &m, &y, &k)
+	// 解析 "Color/C=0 M=100 Y=100 K=0" 格式
+	var fc, fm, fy, fk float64
+	_, err := fmt.Sscanf(idmlColor, "Color/C=%f M=%f Y=%f K=%f", &fc, &fm, &fy, &fk)
 	if err == nil {
-		c /= 100.0
-		m /= 100.0
-		y /= 100.0
-		k /= 100.0
-		r := (1.0 - c) * (1.0 - k) * 255
-		g := (1.0 - m) * (1.0 - k) * 255
-		b := (1.0 - y) * (1.0 - k) * 255
-		return int(r + 0.5), int(g + 0.5), int(b + 0.5)
+		return uint8(fc + 0.5), uint8(fm + 0.5), uint8(fy + 0.5), uint8(fk + 0.5)
 	}
 
-	// 从颜色映射表查找自定义颜色
+	// 从颜色映射表查找自定义颜色（如 "Color/u155" → "0 96 95 0"）
 	if r.ColorMap != nil {
 		if cv, ok := r.ColorMap[idmlColor]; ok {
 			parts := strings.Fields(cv)
 			if len(parts) == 4 {
-				c, _ := strconv.ParseFloat(parts[0], 64)
-				m, _ := strconv.ParseFloat(parts[1], 64)
-				y, _ := strconv.ParseFloat(parts[2], 64)
-				k, _ := strconv.ParseFloat(parts[3], 64)
-				c /= 100.0
-				m /= 100.0
-				y /= 100.0
-				k /= 100.0
-				red := (1.0 - c) * (1.0 - k) * 255
-				green := (1.0 - m) * (1.0 - k) * 255
-				blue := (1.0 - y) * (1.0 - k) * 255
-				return int(red + 0.5), int(green + 0.5), int(blue + 0.5)
+				c1, _ := strconv.ParseFloat(parts[0], 64)
+				m1, _ := strconv.ParseFloat(parts[1], 64)
+				y1, _ := strconv.ParseFloat(parts[2], 64)
+				k1, _ := strconv.ParseFloat(parts[3], 64)
+				return uint8(c1 + 0.5), uint8(m1 + 0.5), uint8(y1 + 0.5), uint8(k1 + 0.5)
 			}
 		}
 	}
 
-	return 0, 0, 0
+	return 0, 0, 0, 0
 }
