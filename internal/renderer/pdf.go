@@ -25,6 +25,7 @@ import (
 	"image"
 	"image/draw"
 	"image/png"
+	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -330,16 +331,12 @@ func (r *PDFRenderer) DrawTextFrame(x, y, w, h float64, text string, fontName st
 		case "RightAlign", "RightJustified": tx = x + w - textWidth
 		default: tx = x
 		}
-		if tx < x { tx = x }
+		if angle == 0 && tx < x { tx = x }
 		// 整体旋转文本：用 gopdf.Rotate 绕框中心旋转坐标系，Cell 绘制横排文本
 		if angle != 0 {
 			cx, cy := x+w/2, y+h/2
 			r.pdf.Rotate(angle, cx, cy)
-			adjustedTX := tx
-			if text == "定香小画面" && line == "定香小画面" {
-				adjustedTX = tx - 20
-			}
-			r.pdf.SetXY(adjustedTX, startY+float64(i)*lineHeight)
+			r.pdf.SetXY(tx, startY+float64(i)*lineHeight)
 			r.pdf.Cell(nil, line)
 			r.pdf.RotateReset()
 		} else {
