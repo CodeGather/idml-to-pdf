@@ -8,9 +8,10 @@
 // 5. 获取母版页 Y 偏移（竖排文字专用）
 //
 // 整体流程：
-//   OpenIDML → 解压 ZIP → 解析 designmap → 解析 Spreads → 解析 Stories
-//   → 解析颜色 → 返回 IDMLDocument
-//   → 后续用 FlattenPageItems + SortItemsByLayer 处理元素
+//
+//	OpenIDML → 解压 ZIP → 解析 designmap → 解析 Spreads → 解析 Stories
+//	→ 解析颜色 → 返回 IDMLDocument
+//	→ 后续用 FlattenPageItems + SortItemsByLayer 处理元素
 package parser
 
 import (
@@ -26,32 +27,34 @@ import (
 // IDMLDocument 表示解压后的 IDML 内容集合。
 // 这是解析阶段的输出，也是渲染阶段的输入。
 type IDMLDocument struct {
-	SourcePath       string                   // 原始 .idml 文件路径
-	ExtractDir       string                   // 解压后的临时目录
-	zipReader        *zip.ReadCloser           // ZIP 读取器（用于 Close 时关闭）
-	DesignMap        *DesignMap                // 文档元数据
-	Spreads          []Spread                  // 页面布局列表
-	Stories          map[string]Story           // 文本内容（key = Story Self ID）
-	EmbeddedGraphics map[string][]byte          // 嵌入素材（key = 文件名，如 "graphic_001.jpg"）
-	ColorMap         map[string]string          // 颜色名 → CMYK ColorValue
+	SourcePath       string            // 原始 .idml 文件路径
+	ExtractDir       string            // 解压后的临时目录
+	zipReader        *zip.ReadCloser   // ZIP 读取器（用于 Close 时关闭）
+	DesignMap        *DesignMap        // 文档元数据
+	Spreads          []Spread          // 页面布局列表
+	Stories          map[string]Story  // 文本内容（key = Story Self ID）
+	EmbeddedGraphics map[string][]byte // 嵌入素材（key = 文件名，如 "graphic_001.jpg"）
+	ColorMap         map[string]string // 颜色名 → CMYK ColorValue
 }
 
 // OpenIDML 打开一个 .idml 文件，解压并解析核心 XML。
 //
 // 参数：
-//   idmlPath: .idml 文件路径
-//   extractDir: 解压目标目录（空字符串表示创建临时目录）
-//   keepExtracted: 是否保留解压后的文件（调试用）
+//
+//	idmlPath: .idml 文件路径
+//	extractDir: 解压目标目录（空字符串表示创建临时目录）
+//	keepExtracted: 是否保留解压后的文件（调试用）
 //
 // 返回：
-//   IDMLDocument: 包含所有解析后的数据
+//
+//	IDMLDocument: 包含所有解析后的数据
 //
 // 解压后解析的 XML 文件：
-//   1. designmap.xml — 文档结构元数据
-//   2. Spreads/*.xml — 页面布局（每个文件一个 Spread）
-//   3. Stories/*.xml — 文本内容
-//   4. Resources/Graphic.xml — 颜色定义
-//   5. Resources/Graphics/* — 嵌入素材（二进制文件）
+//  1. designmap.xml — 文档结构元数据
+//  2. Spreads/*.xml — 页面布局（每个文件一个 Spread）
+//  3. Stories/*.xml — 文本内容
+//  4. Resources/Graphic.xml — 颜色定义
+//  5. Resources/Graphics/* — 嵌入素材（二进制文件）
 func OpenIDML(idmlPath, extractDir string, keepExtracted bool) (*IDMLDocument, error) {
 	zr, err := zip.OpenReader(idmlPath)
 	if err != nil {
@@ -238,10 +241,11 @@ func FlattenPageItems(sp Spread) []PageItem {
 // 2. 组内子元素继承组的 ItemLayer（如果子元素本身没设置）
 //
 // 组嵌套示例：
-//   最外层组: transform = T1, layer = "u10f"
-//     ├─ 子矩形: transform = T2 → 合并后 = T1·T2, layer = "u10f"
-//     └─ 子组: transform = T3
-//          └─ 子矩形: transform = T4 → 合并后 = T1·T3·T4, layer = "u10f"
+//
+//	最外层组: transform = T1, layer = "u10f"
+//	  ├─ 子矩形: transform = T2 → 合并后 = T1·T2, layer = "u10f"
+//	  └─ 子组: transform = T3
+//	       └─ 子矩形: transform = T4 → 合并后 = T1·T3·T4, layer = "u10f"
 func flattenGroup(g Group, parentTransform TransformMatrix) []PageItem {
 	if g.Visible == "false" {
 		return nil
@@ -264,12 +268,24 @@ func flattenGroup(g Group, parentTransform TransformMatrix) []PageItem {
 		return it
 	}
 
-	for _, it := range g.Rectangles   { out = append(out, process(it)) }
-	for _, it := range g.Ovals        { out = append(out, process(it)) }
-	for _, it := range g.Polygons     { out = append(out, process(it)) }
-	for _, it := range g.TextFrames   { out = append(out, process(it)) }
-	for _, it := range g.GraphicLines { out = append(out, process(it)) }
-	for _, it := range g.EPSTexts     { out = append(out, process(it)) }
+	for _, it := range g.Rectangles {
+		out = append(out, process(it))
+	}
+	for _, it := range g.Ovals {
+		out = append(out, process(it))
+	}
+	for _, it := range g.Polygons {
+		out = append(out, process(it))
+	}
+	for _, it := range g.TextFrames {
+		out = append(out, process(it))
+	}
+	for _, it := range g.GraphicLines {
+		out = append(out, process(it))
+	}
+	for _, it := range g.EPSTexts {
+		out = append(out, process(it))
+	}
 	for _, childGroup := range g.Groups {
 		out = append(out, flattenGroup(childGroup, globalTransform)...)
 	}
@@ -298,10 +314,11 @@ func GetPageBounds(p Page) (x, y, w, h float64, err error) {
 // GetMasterPageYOffset 返回 MasterPageTransform 的 Y 偏移量。
 //
 // 使用场景：
-//   当 Page 的 LayoutRule="UseMaster" 时，页面应用了母版页偏移。
-//   水平元素的 ItemTransform 已经包含了这个偏移，但竖排文字
-//   的坐标计算路径不同（使用 Story 坐标单独计算），需要额外
-//   加上此偏移才能使竖排文字与参考 PDF 对齐。
+//
+//	当 Page 的 LayoutRule="UseMaster" 时，页面应用了母版页偏移。
+//	水平元素的 ItemTransform 已经包含了这个偏移，但竖排文字
+//	的坐标计算路径不同（使用 Story 坐标单独计算），需要额外
+//	加上此偏移才能使竖排文字与参考 PDF 对齐。
 //
 // 注意：不要对水平元素应用此偏移，否则会产生双重偏移。
 func GetMasterPageYOffset(p Page) float64 {
@@ -332,15 +349,17 @@ func (d *IDMLDocument) LayerOrder(layerID string) int {
 // SortItemsByLayer 按图层 Z 顺序对 PageItem 列表排序（底层在前）。
 //
 // 为何需要排序：
-//   FlattenPageItems() 按类型分组收集元素，打乱了 XML 文档顺序。
-//   InDesign 的 Z 顺序由两个因素决定：
-//   1. 图层顺序（designmap.xml 中 <Layer> 的出现顺序）
-//   2. 同层内元素顺序（XML 文档中的出现顺序）
+//
+//	FlattenPageItems() 按类型分组收集元素，打乱了 XML 文档顺序。
+//	InDesign 的 Z 顺序由两个因素决定：
+//	1. 图层顺序（designmap.xml 中 <Layer> 的出现顺序）
+//	2. 同层内元素顺序（XML 文档中的出现顺序）
 //
 // 排序策略：
-//   主键 = 图层顺序（LayerOrder），次键 = Self ID（文档顺序）
-//   Self ID 格式为 "u" + 十六进制数字，字符串比较在同等长度下
-//   等价于数值比较。
+//
+//	主键 = 图层顺序（LayerOrder），次键 = Self ID（文档顺序）
+//	Self ID 格式为 "u" + 十六进制数字，字符串比较在同等长度下
+//	等价于数值比较。
 //
 // 注意：如果 Self ID 长度不一致，字符串比较会出错。
 // 当前所有 ID 都是相同长度，所以可以安全使用。
@@ -400,16 +419,17 @@ type GraphicXML struct {
 // Space: 色彩空间（"CMYK" 或 "RGB"）
 // ColorValue: 颜色值（如 "0 100 100 0" 或 "255 255 255"）
 type GraphicColor struct {
-	Self        string `xml:"Self,attr"`
-	Space       string `xml:"Space,attr"`
-	ColorValue  string `xml:"ColorValue,attr"`
+	Self       string `xml:"Self,attr"`
+	Space      string `xml:"Space,attr"`
+	ColorValue string `xml:"ColorValue,attr"`
 }
 
 // parseGraphicColors 解析 Graphic.xml 数据，返回颜色名到 CMYK ColorValue 的映射。
 //
 // 映射格式：
-//   key: 颜色 Self 属性（如 "Color/C=0 M=100 Y=100 K=0" 或 "Color/u155"）
-//   value: 颜色 ColorValue 属性（如 "0 100 100 0"）
+//
+//	key: 颜色 Self 属性（如 "Color/C=0 M=100 Y=100 K=0" 或 "Color/u155"）
+//	value: 颜色 ColorValue 属性（如 "0 100 100 0"）
 //
 // 注意：ColorValue 是原始字符串，包含浮点数（如 "7.000000029802322 93.99999976158142 ..."）
 // 在渲染时通过 parseColorCMYK 解析为整数 CMYK 值。

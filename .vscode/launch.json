@@ -12,7 +12,9 @@
       "program": "${workspaceFolder}/main.go",
       "args": [
         "-idml",
-        "/Users/Yau/work/1.Resources/4.hermes/idml-to-pdf/test/2.idml"
+        "/Users/Yau/work/1.Resources/4.hermes/idml-to-pdf/test/2.idml",
+        "-dpi",
+        "100"
       ]
     }
   ]

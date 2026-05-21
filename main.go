@@ -93,6 +93,7 @@ func main() {
 		outputPath  = flag.String("out", "output.pdf", "输出的 PDF 文件路径")
 		assetRoot   = flag.String("assets", "", "素材根目录（逗号分隔）")
 		keepExtract = flag.Bool("keep", false, "保留解压后的临时文件")
+		dpi         = flag.Float64("dpi", 72, "输出 PDF 的分辨率 DPI（默认 72）")
 	)
 	flag.Parse()
 
@@ -125,6 +126,8 @@ func main() {
 	log.Println("[3/4] 正在渲染 PDF...")
 	rend := renderer.NewPDFRenderer()
 	rend.ColorMap = doc.ColorMap
+	// 设置 DPI
+	rend.SetDPI(*dpi)
 	rend.Start()
 
 	for _, sp := range doc.Spreads {

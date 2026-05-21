@@ -48,6 +48,7 @@ type PDFRenderer struct {
 	pageHeight float64
 	fontLoaded map[string]bool
 	ColorMap   map[string]string // 颜色名 -> CMYK ColorValue，来自解析器
+	dpi        float64           // 新增：输出 PDF 的 DPI
 }
 
 func NewPDFRenderer() *PDFRenderer {
@@ -55,6 +56,14 @@ func NewPDFRenderer() *PDFRenderer {
 		pageWidth:  595.28,
 		pageHeight: 841.89,
 		fontLoaded: make(map[string]bool),
+		dpi:        72, // 默认 72 DPI
+	}
+}
+
+// SetDPI 设置输出 PDF 的分辨率（DPI）。
+func (r *PDFRenderer) SetDPI(dpi float64) {
+	if dpi > 0 {
+		r.dpi = dpi
 	}
 }
 
@@ -157,7 +166,7 @@ func (r *PDFRenderer) DrawImage(imageData []byte, x, y, w, h, angle float64) err
 	drawFile := tmpFile
 	if ext == ".pdf" {
 		pngFile := tmpFile + ".png"
-		if err := convertPDFToPng(tmpFile, pngFile); err != nil {
+		if err := r.convertPDFToPngDPI(tmpFile, pngFile); err != nil {
 			return fmt.Errorf("convert pdf/ai to png: %w", err)
 		}
 		defer os.Remove(pngFile)
@@ -197,7 +206,7 @@ func (r *PDFRenderer) DrawRotatedImage(imageData []byte, cx, cy, w, h, angle flo
 	drawFile := tmpFile
 	if ext == ".pdf" {
 		pngFile := tmpFile + ".png"
-		if err := convertPDFToPng(tmpFile, pngFile); err != nil {
+		if err := r.convertPDFToPngDPI(tmpFile, pngFile); err != nil {
 			return fmt.Errorf("convert pdf/ai to png: %w", err)
 		}
 		defer os.Remove(pngFile)
@@ -292,7 +301,8 @@ func CropImageToVisibleRegion(imgData []byte, pathLx1, pathLy1, pathLx2, pathLy2
 
 // convertPDFToPng 将 PDF/AI 转为 PNG，按平台尝试多个外部工具（mutool → pdftoppm → sips/ImageMagick）。
 // 使用 600 DPI 以获得较好质量。.ai 文件先复制为 .pdf。
-func convertPDFToPng(src, dst string) error {
+// convertPDFToPngDPI 支持自定义 DPI
+func (r *PDFRenderer) convertPDFToPngDPI(src, dst string) error {
 	pdfSrc := src
 	if filepath.Ext(strings.ToLower(src)) == ".ai" {
 		tmpPDF := src + ".pdf"
@@ -302,8 +312,11 @@ func convertPDFToPng(src, dst string) error {
 			pdfSrc = tmpPDF
 		}
 	}
-	const rasterDPI = 144
-	if err := exec.Command("mutool", "convert", "-O", "resolution="+strconv.Itoa(rasterDPI), "-o", dst, pdfSrc, "1").Run(); err == nil {
+	dpi := int(r.dpi)
+	if dpi <= 0 {
+		dpi = 144
+	}
+	if err := exec.Command("mutool", "convert", "-O", "resolution="+strconv.Itoa(dpi), "-o", dst, pdfSrc, "1").Run(); err == nil {
 		generated := strings.TrimSuffix(dst, filepath.Ext(dst)) + "1.png"
 		if _, err := os.Stat(generated); err == nil {
 			os.Rename(generated, dst)
@@ -311,7 +324,7 @@ func convertPDFToPng(src, dst string) error {
 		}
 	}
 	outPrefix := dst + "_ppm"
-	if err := exec.Command("pdftoppm", "-png", "-f", "1", "-l", "1", "-r", strconv.Itoa(rasterDPI), pdfSrc, outPrefix).Run(); err == nil {
+	if err := exec.Command("pdftoppm", "-png", "-f", "1", "-l", "1", "-r", strconv.Itoa(dpi), pdfSrc, outPrefix).Run(); err == nil {
 		generated := outPrefix + "-1.png"
 		if _, err := os.Stat(generated); err == nil {
 			os.Rename(generated, dst)
@@ -325,23 +338,23 @@ func convertPDFToPng(src, dst string) error {
 			return nil
 		}
 	case "windows":
-		if err := exec.Command("magick", "convert", "-density", strconv.Itoa(rasterDPI), pdfSrc+"[0]", dst).Run(); err == nil {
+		if err := exec.Command("magick", "convert", "-density", strconv.Itoa(dpi), pdfSrc+"[0]", dst).Run(); err == nil {
 			return nil
 		}
-		if err := exec.Command("convert", "-density", strconv.Itoa(rasterDPI), pdfSrc+"[0]", dst).Run(); err == nil {
+		if err := exec.Command("convert", "-density", strconv.Itoa(dpi), pdfSrc+"[0]", dst).Run(); err == nil {
 			return nil
 		}
-		if err := exec.Command("gswin64c", "-sDEVICE=pngalpha", "-dFirstPage=1", "-dLastPage=1", "-r"+strconv.Itoa(rasterDPI), "-o", dst, pdfSrc).Run(); err == nil {
+		if err := exec.Command("gswin64c", "-sDEVICE=pngalpha", "-dFirstPage=1", "-dLastPage=1", "-r"+strconv.Itoa(dpi), "-o", dst, pdfSrc).Run(); err == nil {
 			return nil
 		}
-		if err := exec.Command("gswin32c", "-sDEVICE=pngalpha", "-dFirstPage=1", "-dLastPage=1", "-r"+strconv.Itoa(rasterDPI), "-o", dst, pdfSrc).Run(); err == nil {
+		if err := exec.Command("gswin32c", "-sDEVICE=pngalpha", "-dFirstPage=1", "-dLastPage=1", "-r"+strconv.Itoa(dpi), "-o", dst, pdfSrc).Run(); err == nil {
 			return nil
 		}
 	default:
-		if err := exec.Command("convert", "-density", strconv.Itoa(rasterDPI), pdfSrc+"[0]", dst).Run(); err == nil {
+		if err := exec.Command("convert", "-density", strconv.Itoa(dpi), pdfSrc+"[0]", dst).Run(); err == nil {
 			return nil
 		}
-		if err := exec.Command("gm", "convert", "-density", strconv.Itoa(rasterDPI), pdfSrc+"[0]", dst).Run(); err == nil {
+		if err := exec.Command("gm", "-density", strconv.Itoa(dpi), pdfSrc+"[0]", dst).Run(); err == nil {
 			return nil
 		}
 	}
