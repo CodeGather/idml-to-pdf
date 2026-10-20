@@ -1,9 +1,3 @@
-## Usage
-
-```bash
-python idml_to_pdf.py input.idml output.pdf
-```
-=======
 # IDML 转 PDF 技术方案（Go 语言实现）
 
 本文档提供了一套完整的、可直接落地的 Go 语言技术方案，用于将 Adobe InDesign IDML 文件解析并渲染为 PDF。方案覆盖了 IDML 结构解析、素材回退加载、坐标变换、PDF 生成等核心环节，并附带了可直接编译运行的示例代码。
@@ -501,6 +495,10 @@ GOPROXY=https://goproxy.cn,direct go run main.go -idml ./test/1.idml -out ./test
 ---
 
 ## 7. 测试与验证建议
+
+```bash
+python idml_to_pdf.py input.idml output.pdf
+```
 
 ### 7.1 如何准备测试 IDML
 
