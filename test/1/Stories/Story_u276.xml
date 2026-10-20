@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<idPkg:Story xmlns:idPkg="http://ns.adobe.com/AdobeInDesign/idml/1.0/packaging" DOMVersion="21.0">
+	<Story Self="u276" UserText="true" IsEndnoteStory="false" AppliedTOCStyle="n" TrackChanges="false" StoryTitle="$ID/" AppliedNamedGrid="n">
+		<StoryPreference OpticalMarginAlignment="false" OpticalMarginSize="12" FrameType="TextFrameType" StoryOrientation="Horizontal" StoryDirection="LeftToRightDirection" />
+		<InCopyExportOption IncludeGraphicProxies="true" IncludeAllResources="false" />
+		<ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/$ID/NormalParagraphStyle" Composer="HL Composer J" HyphenationZone="14.173228346456694" RuleAboveLineWeight="0.35433070866141736" RuleBelowLineWeight="0.35433070866141736" Justification="CenterAlign" SplitColumnInsideGutter="3" ParagraphShadingTint="-1" ParagraphBorderTopLeftCornerRadius="1" ParagraphBorderTopRightCornerRadius="1" ParagraphBorderBottomLeftCornerRadius="1" ParagraphBorderBottomRightCornerRadius="1" ParagraphShadingTopLeftCornerRadius="1" ParagraphShadingTopRightCornerRadius="1" ParagraphShadingBottomLeftCornerRadius="1" ParagraphShadingBottomRightCornerRadius="1">
+			<Properties>
+				<ParagraphShadingColor type="object">Color/C=100 M=0 Y=0 K=0</ParagraphShadingColor>
+				<ParagraphBorderGapColor type="object">Swatch/None</ParagraphBorderGapColor>
+			</Properties>
+			<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]" FillColor="Color/Paper" KerningMethod="$ID/Metrics - Roman Only" StrokeWeight="0.125" StrokeColor="Color/Paper" AppliedLanguage="$ID/Chinese: Simplified" MiterLimit="2" RubyFontSize="-0.5" KentenFontSize="-0.5">
+				<Properties>
+					<Leading type="unit">12</Leading>
+					<AppliedFont type="string">Arial</AppliedFont>
+				</Properties>
+				<Content>B</Content>
+			</CharacterStyleRange>
+		</ParagraphStyleRange>
+	</Story>
+</idPkg:Story>

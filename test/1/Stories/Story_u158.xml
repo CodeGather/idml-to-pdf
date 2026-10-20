@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<idPkg:Story xmlns:idPkg="http://ns.adobe.com/AdobeInDesign/idml/1.0/packaging" DOMVersion="21.0">
+	<Story Self="u158" UserText="true" IsEndnoteStory="false" AppliedTOCStyle="n" TrackChanges="false" StoryTitle="$ID/" AppliedNamedGrid="n">
+		<StoryPreference OpticalMarginAlignment="false" OpticalMarginSize="12" FrameType="TextFrameType" StoryOrientation="Horizontal" StoryDirection="LeftToRightDirection" />
+		<InCopyExportOption IncludeGraphicProxies="true" IncludeAllResources="false" />
+		<ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/$ID/NormalParagraphStyle" Composer="HL Composer J" HyphenationZone="24.8355572744718" RuleAboveLineWeight="0.620888931861795" RuleBelowLineWeight="0.620888931861795" Justification="CenterJustified" SplitColumnInsideGutter="5.256859623096529" ParagraphShadingTint="-1" ParagraphBorderTopLeftCornerRadius="1" ParagraphBorderTopRightCornerRadius="1" ParagraphBorderBottomLeftCornerRadius="1" ParagraphBorderBottomRightCornerRadius="1" ParagraphShadingTopLeftCornerRadius="1" ParagraphShadingTopRightCornerRadius="1" ParagraphShadingBottomLeftCornerRadius="1" ParagraphShadingBottomRightCornerRadius="1">
+			<Properties>
+				<ParagraphShadingColor type="object">Color/C=100 M=0 Y=0 K=0</ParagraphShadingColor>
+				<ParagraphBorderGapColor type="object">Swatch/None</ParagraphBorderGapColor>
+			</Properties>
+			<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]" PointSize="9" KerningMethod="$ID/Metrics - Roman Only" StrokeWeight="0.620888931861795" AppliedLanguage="$ID/Chinese: Simplified" MiterLimit="3.5045730820643537" RubyFontSize="-0.8761432705160884" KentenFontSize="-0.8761432705160884">
+				<Properties>
+					<AppliedFont type="string">黑体</AppliedFont>
+				</Properties>
+				<Content>收银台</Content>
+			</CharacterStyleRange>
+		</ParagraphStyleRange>
+	</Story>
+</idPkg:Story>
